@@ -1,4 +1,5 @@
 from navmazing import NavigateToSibling
+from wait_for import wait_for
 from widgetastic.exceptions import NoSuchElementException
 
 from airgun.entities.base import BaseEntity
@@ -15,8 +16,16 @@ class HostGroupEntity(BaseEntity):
     endpoint_path = '/hostgroups'
 
     def create(self, values):
-        """Create new host group entity"""
+        """Create a new host group entity and assign Ansible role(s) if required."""
         view = self.navigate_to(self, 'New')
+        if 'ansible_roles' in values:
+            view.ansible_roles.more_item.click()
+            view.ansible_roles.select_pages.click()
+            role_list = self.browser.elements(view.ansible_roles.available_role, parent=self)
+            for role in role_list[1:]:
+                if role.text.split(". ")[1] in values['ansible_roles']:
+                    role.click()
+            values.pop('ansible_roles')
         view.fill(values)
         view.submit.click()
         view.flash.assert_no_error()
@@ -64,6 +73,53 @@ class HostGroupEntity(BaseEntity):
         view.submit.click()
         view.flash.assert_no_error()
         view.flash.dismiss()
+
+    def total_no_of_assigned_role(self, entity_name):
+        """Count of assigned role to the host group"""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.ansible_roles.click()
+        role_list = self.browser.elements(view.ansible_roles.assigned_ansible_role, parent=self)
+        wait_for(lambda: int(role_list[-1].text.split(". ")[0]), timeout=30)
+        return int(role_list[-1].text.split(". ")[0])
+
+    def assign_role_to_hostgroup(self, entity_name, role_name):
+        """Assign Ansible role from the host group based on user input
+        Args:
+            entity_name: Name of the host
+            role_name: Name of the ansible role
+        """
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.ansible_roles.more_item.click()
+        view.ansible_roles.select_pages.click()
+        role_list = self.browser.elements(view.ansible_roles.available_role, parent=self)
+        for role in role_list[1:]:
+            if role.text.split(". ")[1] == role_name:
+                role.click()
+        view.submit.click()
+
+    def remove_hostgroup_role(self, entity_name, role_name):
+        """Remove Ansible role from the host group based on user input
+        Args:
+            entity_name: Name of the host
+            role_name: Name of the ansible role
+        """
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.ansible_roles.click()
+        role_list = self.browser.elements(view.ansible_roles.assigned_role, parent=self)
+        for role in role_list:
+            if role.text.split(". ")[1] == role_name:
+                role.click()
+        view.submit.click()
+
+    def read_role(self, entity_name, role_name):
+        """Return the value of assigned Ansible roles to the host group."""
+        view = self.navigate_to(self, 'Edit', entity_name=entity_name)
+        view.ansible_roles.click()
+        role_list = self.browser.elements(view.ansible_roles.assigned_role, parent=self)
+        role = [
+            role.text.split(". ")[1] for role in role_list if role.text.split(". ")[1] in role_name
+        ]
+        return role
 
 
 @navigator.register(HostGroupEntity, 'All')
